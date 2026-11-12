@@ -1,56 +1,63 @@
-# Project Title
+# Invoice Discrepancy Detector
 
-[![GitHub license](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE) [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](./CONTRIBUTING.md)
+Investigate invoice discrepancies with traceable evidence. Invoice Discrepancy Detector is a local-first accounts payable reconciliation MVP. It compares invoice lines against purchase orders and goods receipts with deterministic `Decimal` arithmetic, persists cases in SQLite, and supports explicit human review.
 
-One-line description of what this project does and who it's for.
+It is not an ERP, payment processor, fraud guarantee, or autonomous approver. It never initiates payment. The current version accepts normalized records through its API; uploaded documents are stored and hashed, but automatic OCR/extraction is not yet implemented.
 
-## Features
+## Quick start
 
-- Feature one
-- Feature two
-- Feature three
-
-## Getting Started
-
-### Prerequisites
-
-List anything the user needs to have installed before they can use this project.
-
-### Installation
+Requires Python 3.11+ and Node.js 20+. From the repository root:
 
 ```bash
-# Clone the repository
-git clone https://github.com/username/repo-name.git
-cd repo-name
-
-# Install dependencies
-# add your install command here
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+uvicorn backend.main:app --reload
 ```
 
-### Usage
+In another terminal:
 
 ```bash
-# Add your run command here
+cd frontend
+pnpm install
+pnpm run dev
 ```
 
-## Contributing
+Open http://localhost:5173. API docs: http://localhost:8000/docs. The UI's **Run $350 demo** submits a real reconciliation request and persists the result. Data lives under `./data`; set `INVOICE_DISCREPANCY_DETECTOR_DATA` to change its location.
 
-We'd love to accept your patches and contributions to this project. There are just a few guidelines you need to follow.
+## API
 
-### [Code of Conduct](./CODE_OF_CONDUCT.md)
+- `POST /api/reconcile` accepts invoice, PO, optional receipt records. Money and quantities are decimal strings.
+- `GET /api/cases`, `GET /api/cases/{id}` list and inspect persisted investigations.
+- `PATCH /api/cases/{id}/review` records `open`, `approved`, `rejected`, `resolved`, or `clarification_requested` and optional note.
+- `POST /api/documents` stores a PDF, image, CSV, or JSON upload with SHA-256 deduplication; `GET /api/documents/{id}/file` serves it back.
+- `GET /api/cases/{id}/export.json` exports a case.
 
-This project follows the [Contributor Covenant](https://www.contributor-covenant.org/) as its Code of Conduct, and we expect all project participants to adhere to it. Kindly read the [full guide](./CODE_OF_CONDUCT.md) to understand what actions will not be tolerated.
+Example input and demo scenario are visible in `frontend/src/main.tsx`. Results distinguish a deterministic validation status from human review status. The current matcher uses exact SKU or case-insensitive exact description; similarity suggestions and ambiguity review are not implemented.
 
-### [Contributing Guide](./CONTRIBUTING.md)
+## Architecture
 
-Read our [contributing guide](./CONTRIBUTING.md) to learn about our development process, how to propose bug fixes and improvements, and how to build and test your changes to the project.
+```mermaid
+flowchart LR
+  UI[React review UI] --> API[FastAPI]
+  API --> R[Decimal reconciliation]
+  API --> DB[(SQLite)]
+  API --> FS[Local uploaded files]
+```
 
-### Issues
+## Development
 
-Feel free to submit issues and enhancement requests. Use the template provided when creating an issue to ensure your request is clear and actionable.
+```bash
+pip install -e '.[dev]'
+pytest
+ruff check backend
+cd frontend && pnpm test && pnpm run build
+```
 
-See the open issues for a complete list of proposed features (and known issues).
+## Limitations and roadmap
 
-## [License](./LICENSE)
+This release is an early, local-first application. Uploaded JSON and CSV files are parsed as structured data; born-digital PDFs may have text extracted when the optional `documents` extra is installed. The extracted material is not yet mapped automatically into invoice, PO, or receipt records. Scanned-document OCR, provenance highlights, extraction correction, partial receipt and prior-invoice allocation, tax/discount/shipping policy, fuzzy association, evaluation datasets, and optional Ollama support are not included. Financial totals are checked when subtotal and tax were explicitly provided; missing values remain unknown rather than coerced to zero. API audit records capture case creation and review changes. Use synthetic or appropriately protected data; local storage is not encrypted.
 
-This project is licensed under the [MIT License](./LICENSE), meaning that you're free to modify, distribute, and/or use it for any commercial or private project.
+## License
+
+MIT. See [LICENSE](LICENSE).
