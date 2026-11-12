@@ -1,19 +1,18 @@
 """Local-first invoice reconciliation API with deterministic Decimal calculations."""
 from __future__ import annotations
 
-import hashlib
 import csv
+import hashlib
 import io
 import json
 import os
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -68,7 +67,7 @@ class Request(BaseModel):
     po: Record
     receipt: Record | None = None
     price_tolerance: Decimal = Decimal("0.01")
-    quantity_tolerance: Decimal = Decimal("0")
+    quantity_tolerance: Decimal = Decimal(0)
 
 def reconcile(req: Request) -> dict[str, Any]:
     inv, po, receipt = req.invoice, req.po, req.receipt
@@ -100,7 +99,7 @@ def reconcile(req: Request) -> dict[str, Any]:
 @app.get("/api/health")
 def health(): return {"status":"ok","database":"sqlite","ai_enabled":False}
 @app.post("/api/documents")
-async def upload(file: UploadFile=File(...), kind: str="unknown"):
+async def upload(file: Annotated[UploadFile, File(...)], kind: str="unknown"):
     suffix=Path(file.filename or "").suffix.lower()
     if suffix not in {".pdf",".png",".jpg",".jpeg",".csv",".json"}: raise HTTPException(415,"Use PDF, PNG, JPEG, CSV or JSON")
     data=await file.read(25*1024*1024+1)
@@ -131,7 +130,7 @@ def extract_file(path: Path, suffix: str) -> dict:
                 if len(pdf.pages)>100: return {"status":"needs_review","error":"PDF exceeds 100-page processing limit"}
                 pages=[p.extract_text() or "" for p in pdf.pages]
             return {"status":"text_extracted" if any(pages) else "ocr_required","pages":[{"page":i+1,"text":t} for i,t in enumerate(pages)],"provenance":{"method":"pdfplumber","coordinates":"page text only; no source boxes"}}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"status":"needs_review","error":str(exc)[:300]}
     return {"status":"image_ocr_unavailable","message":"Image OCR is not configured; attach structured data or install an OCR adapter."}
 @app.get("/api/documents")
