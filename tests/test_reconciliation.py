@@ -1,6 +1,10 @@
 from decimal import Decimal
 
-from backend.main import Line, Record, Request, reconcile
+from fastapi.testclient import TestClient
+
+from backend.main import Line, Record, Request, app, reconcile
+
+client = TestClient(app)
 
 
 def scenario(invoice_price: str = "485") -> Request:
@@ -35,3 +39,13 @@ def test_missing_receipt_is_explicit_exception():
     req = scenario()
     req.receipt = None
     assert any(x["type"] == "receipt_missing" for x in reconcile(req)["exceptions"])
+
+
+def test_cases_csv_export_route_is_not_captured_as_case_id():
+    response = client.get("/api/cases/export.csv")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.text.startswith(
+        "case_id,invoice_number,supplier,status,review,exception_types,explanation"
+    )

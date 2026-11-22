@@ -151,6 +151,16 @@ def run(req:Request):
 @app.get("/api/cases")
 def cases():
     with Session() as db: return [{"id":c.id,"result":c.result,"review":c.review,"invoice":c.invoice} for c in db.scalars(select(Case))]
+@app.get("/api/cases/export.csv")
+def export_csv():
+    with Session() as db: rows=list(db.scalars(select(Case)))
+    out=io.StringIO(newline=""); writer=csv.writer(out)
+    writer.writerow(["case_id","invoice_number","supplier","status","review","exception_types","explanation"])
+    for c in rows:
+        vals=[c.id,c.invoice.get("number") or "",c.invoice.get("supplier") or "",c.result.get("status"),c.review,";".join(x.get("type","") for x in c.result.get("exceptions",[])),c.result.get("explanation","")]
+        # Prefix spreadsheet formula-leading cells to prevent formula injection.
+        writer.writerow([("'"+v if isinstance(v,str) and v.startswith(("=","+","-","@","\t","\r")) else v) for v in vals])
+    return StreamingResponse(iter([out.getvalue()]),media_type="text/csv",headers={"Content-Disposition":"attachment; filename=invoice-discrepancy-detector.csv"})
 @app.get("/api/cases/{ident}")
 def case(ident:str):
     with Session() as db: c=db.get(Case,ident)
@@ -170,16 +180,6 @@ def review(ident:str,payload:dict):
     return {"id":ident,"review":status,"notes":c.notes}
 @app.get("/api/cases/{ident}/export.json")
 def export_json(ident:str): return case(ident)
-@app.get("/api/cases/export.csv")
-def export_csv():
-    with Session() as db: rows=list(db.scalars(select(Case)))
-    out=io.StringIO(newline=""); writer=csv.writer(out)
-    writer.writerow(["case_id","invoice_number","supplier","status","review","exception_types","explanation"])
-    for c in rows:
-        vals=[c.id,c.invoice.get("number") or "",c.invoice.get("supplier") or "",c.result.get("status"),c.review,";".join(x.get("type","") for x in c.result.get("exceptions",[])),c.result.get("explanation","")]
-        # Prefix spreadsheet formula-leading cells to prevent formula injection.
-        writer.writerow([("'"+v if isinstance(v,str) and v.startswith(("=","+","-","@","\t","\r")) else v) for v in vals])
-    return StreamingResponse(iter([out.getvalue()]),media_type="text/csv",headers={"Content-Disposition":"attachment; filename=invoice-discrepancy-detector.csv"})
 @app.get("/api/cases/{ident}/audit")
 def audit(ident:str):
     with Session() as db: return [{"action":a.action,"detail":a.detail} for a in db.scalars(select(Audit).where(Audit.case_id==ident))]
